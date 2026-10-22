@@ -1,8 +1,9 @@
 from fastapi import FastAPI
-
-from fastapi.responses import RedirectResponse
-
+from src.core.database import Base, engine
 from src.api import cases, documents, summaries
+
+# Create tables if they do not exist
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="Case Management Assistant API",
@@ -10,14 +11,10 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# Register routers with API v1 prefix
 app.include_router(cases.router, prefix="/api/v1")
 app.include_router(documents.router, prefix="/api/v1")
 app.include_router(summaries.router, prefix="/api/v1")
 
-@app.get("/", include_in_schema=False)
-async def root_redirect():
-    return RedirectResponse(url="/docs")
 
 @app.get("/health", tags=["Health Check"])
 async def health_check() -> dict[str, str]:
