@@ -1,50 +1,52 @@
 from typing import List
-from uuid import UUID, uuid4
-from datetime import datetime, timezone
-from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from uuid import UUID
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
-from src.api.cases import cases_db
+from src.core.database import get_db
+from src.models import CaseModel, DocumentModel
 from src.schemas import DocumentResponse
 
 router = APIRouter(prefix="/cases/{case_id}/documents", tags=["Documents"])
 
-documents_db: dict[UUID, dict] = {}
-
 
 @router.post("", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
-async def upload_document(case_id: UUID, file: UploadFile = File(...)) -> DocumentResponse:
-    if case_id not in cases_db:
+async def upload_document(
+    case_id: UUID, file: UploadFile = File(...), db: Session = Depends(get_db)
+) -> DocumentResponse:
+    case = db.get(CaseModel, case_id)
+    if not case:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Case with ID {case_id} not found",
         )
 
-    doc_id = uuid4()
-    now = datetime.now(timezone.utc)
     content = await file.read()
 
-    doc_record = {
-        "id": doc_id,
-        "case_id": case_id,
-        "filename": file.filename or "unnamed_file.txt",
-        "file_size": len(content),
-        "mime_type": file.content_type or "text/plain",
-        "uploaded_at": now,
-    }
-
-    documents_db[doc_id] = doc_record
-    return DocumentResponse.model_validate(doc_record)
+    document = DocumentModel(
+        case_id=case_id,
+        filename=file.filename or "unnamed_file.txt",
+        file_size=len(content),
+        mime_type=file.content_type or "text/plain",
+    )
+    db.add(document)
+    db.commit()
+    db.refresh(document)
+    return DocumentResponse.model_validate(document)
 
 
 @router.get("", response_model=List[DocumentResponse])
-async def list_documents(case_id: UUID) -> List[DocumentResponse]:
-    if case_id not in cases_db:
+async def list_documents(
+    case_id: UUID, db: Session = Depends(get_db)
+) -> List[DocumentResponse]:
+    case = db.get(CaseModel, case_id)
+    if not case:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Case with ID {case_id} not found",
         )
-    return [
-        DocumentResponse.model_validate(doc)
-        for doc in documents_db.values()
-        if doc["case_id"] == case_id
-    ]
+
+    stmt = select(DocumentModel).where(DocumentModel.case_id == case_id)
+    documents = db.scalars(stmt).all()
+    return [DocumentResponse.model_validate(d) for d in documents]
