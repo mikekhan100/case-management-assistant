@@ -1,5 +1,5 @@
 from typing import List
-from uuid import UUID
+from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -7,8 +7,10 @@ from sqlalchemy.orm import Session
 from src.core.database import get_db
 from src.models import CaseModel, DocumentModel
 from src.schemas import DocumentResponse
+from src.services.file_storage import FileStorageService
 
 router = APIRouter(prefix="/cases/{case_id}/documents", tags=["Documents"])
+file_storage = FileStorageService()
 
 
 @router.post("", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
@@ -23,10 +25,22 @@ async def upload_document(
         )
 
     content = await file.read()
+    doc_id = uuid4()
+    filename = file.filename or "unnamed_file.txt"
+
+    # Save binary file content to disk
+    saved_path = file_storage.save_file(
+        case_id=case_id,
+        document_id=doc_id,
+        filename=filename,
+        content=content,
+    )
 
     document = DocumentModel(
+        id=doc_id,
         case_id=case_id,
-        filename=file.filename or "unnamed_file.txt",
+        filename=filename,
+        file_path=str(saved_path),
         file_size=len(content),
         mime_type=file.content_type or "text/plain",
     )

@@ -21,3 +21,6 @@ Thumbs.db
 
 # Database files
 *.db
+
+# Local File Storage
+storage/
