@@ -6,8 +6,10 @@ from sqlalchemy.orm import Session
 from src.core.database import get_db
 from src.models import CaseModel, SummaryModel
 from src.schemas import SummaryResponse
+from src.services import SummaryService
 
 router = APIRouter(prefix="/cases/{case_id}/summary", tags=["Summaries"])
+summary_service = SummaryService()
 
 
 @router.post("", response_model=SummaryResponse, status_code=status.HTTP_201_CREATED)
@@ -21,21 +23,22 @@ async def generate_summary(
             detail=f"Case with ID {case_id} not found",
         )
 
-    # Check if a summary already exists
+    # Generate summary text using our service layer
+    generated_text = summary_service.generate_case_summary(case, db)
+
+    # Check if a summary already exists for this case
     stmt = select(SummaryModel).where(SummaryModel.case_id == case_id)
     existing_summary = db.scalars(stmt).first()
 
     if existing_summary:
-        existing_summary.content = (
-            f"Updated baseline summary for case {case.reference_number}: Under review."
-        )
+        existing_summary.content = generated_text
         db.commit()
         db.refresh(existing_summary)
         return SummaryResponse.model_validate(existing_summary)
 
     summary = SummaryModel(
         case_id=case_id,
-        content=f"Baseline summary for case {case.reference_number}: Under review.",
+        content=generated_text,
         model_version="baseline-v1",
     )
     db.add(summary)
