@@ -1,5 +1,6 @@
 import pytest
-from fastapi.testclient import TestClient
+from httpx import ASGITransport, AsyncClient
+from starlette.testclient import TestClient
 
 from src.main import app
 
